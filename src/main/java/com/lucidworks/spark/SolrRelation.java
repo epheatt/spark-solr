@@ -13,6 +13,7 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.sources.*;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
@@ -105,11 +106,38 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
   }
 
   public synchronized RDD<Row> buildScan(String[] fields, Filter[] filters) {
-    if (fields != null && fields.length > 0)
-      solrQuery.setFields(fields);
-    else
-      solrQuery.remove("fl");
-
+    java.util.Map<String,StructField> fieldMap = new HashMap<String,StructField>();
+    for (StructField f : schema.fields()) fieldMap.put(f.name(), f);  
+    if (fields != null && fields.length > 0) {
+        String[] fieldList = new String[fields.length];
+        for (int f = 0; f < fields.length; f++) {
+            StructField field = fieldMap.get(fields[f]);
+            if (field != null) {
+                Metadata meta = field.metadata();
+                if (meta.contains("docValues") && !meta.contains("stored")) {
+                    fieldList[f] = field.name() + ":field("+field.name()+")";
+                } else {
+                    fieldList[f] = field.name();
+                }
+            } else {
+                fieldList[f] = fields[f];
+            }
+        }
+        solrQuery.setFields(fieldList);
+    } else {
+        StructField[] schemaFields = schema.fields();
+        String[] fieldList = new String[schemaFields.length];
+        for (int sf = 0; sf < schemaFields.length; sf++) {
+            StructField schemaField = schemaFields[sf];
+            Metadata meta = schemaField.metadata();
+            if (meta.contains("docValues") && !meta.contains("stored")) {
+                fieldList[sf] = schemaField.name() + ":field("+schemaField.name()+")";
+            } else {
+                fieldList[sf] = schemaField.name();
+            }
+        }
+        solrQuery.setFields(fieldList);
+    }
     // clear all existing filters
     solrQuery.remove("fq");
     if (filters != null && filters.length > 0) {
