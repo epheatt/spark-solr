@@ -114,7 +114,10 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
             StructField field = fieldMap.get(fields[f]);
             if (field != null) {
                 Metadata meta = field.metadata();
-                if (meta.contains("docValues") && !meta.contains("stored")) {
+                Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
+                Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
+                Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
+                if (isMultiValued && !isStored) {
                     fieldList[f] = field.name() + ":field("+field.name()+")";
                 } else {
                     fieldList[f] = field.name();
@@ -130,9 +133,12 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
         for (int sf = 0; sf < schemaFields.length; sf++) {
             StructField schemaField = schemaFields[sf];
             Metadata meta = schemaField.metadata();
-            if (meta.contains("docValues") && !meta.contains("stored")) {
+            Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
+            Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
+            Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
+            if (!isMultiValued && isDocValues && !isStored) {
                 fieldList[sf] = schemaField.name() + ":field("+schemaField.name()+")";
-            } else {
+            } else if (!isMultiValued) {
                 fieldList[sf] = schemaField.name();
             }
         }
