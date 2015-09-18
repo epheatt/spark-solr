@@ -114,13 +114,14 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
             StructField field = fieldMap.get(fields[f]);
             if (field != null) {
                 Metadata meta = field.metadata();
+                String fieldName = meta.contains("name") ? meta.getString("name") : field.name();
                 Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
                 Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
                 Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
                 if (isMultiValued && !isStored) {
-                    fieldList[f] = field.name() + ":field("+field.name()+")";
+                    fieldList[f] = field.name() + ":field("+fieldName+")";
                 } else {
-                    fieldList[f] = field.name();
+                    fieldList[f] = field.name() + ":" + fieldName;
                 }
             } else {
                 fieldList[f] = fields[f];
@@ -133,13 +134,14 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
         for (int sf = 0; sf < schemaFields.length; sf++) {
             StructField schemaField = schemaFields[sf];
             Metadata meta = schemaField.metadata();
+            String fieldName = meta.contains("name") ? meta.getString("name") : schemaField.name();
             Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
             Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
             Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
             if (!isMultiValued && isDocValues && !isStored) {
-                fieldList[sf] = schemaField.name() + ":field("+schemaField.name()+")";
+                fieldList[sf] = schemaField.name() + ":field("+fieldName+")";
             } else if (!isMultiValued) {
-                fieldList[sf] = schemaField.name();
+                fieldList[sf] = schemaField.name() + ":" + fieldName;
             }
         }
         solrQuery.setFields(fieldList);

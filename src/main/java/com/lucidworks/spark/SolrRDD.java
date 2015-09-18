@@ -463,13 +463,14 @@ public class SolrRDD implements Serializable {
           for (int sf = 0; sf < schemaFields.length; sf++) {
               StructField schemaField = schemaFields[sf];
               Metadata meta = schemaField.metadata();
+              String fieldName = meta.contains("name") ? meta.getString("name") : schemaField.name();
               Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
               Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
               Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
               if (!isMultiValued && isDocValues && !isStored) {
-                  fieldList.add(schemaField.name() + ":field("+schemaField.name()+")");
+                  fieldList.add(schemaField.name() + ":field("+fieldName+")");
               } else if (!isMultiValued) {
-                  fieldList.add(schemaField.name());
+                  fieldList.add(schemaField.name() + ":" + fieldName);
               }
           }
           String[] fieldArr = new String[fieldList.size()];
@@ -629,8 +630,10 @@ public class SolrRDD implements Serializable {
 
     List<StructField> listOfFields = new ArrayList<StructField>();
     for (Map.Entry<String, SolrFieldMeta> field : fieldTypeMap.entrySet()) {
+      String fieldName = field.getKey();
       SolrFieldMeta fieldMeta = field.getValue();
       MetadataBuilder metadata = new MetadataBuilder();
+      metadata.putString("name", field.getKey());
       DataType dataType = (fieldMeta != null && fieldMeta.fieldTypeClass != null) ? solrDataTypes.get(fieldMeta.fieldTypeClass) : null;
       if (dataType == null) dataType = DataTypes.StringType;
 
@@ -643,8 +646,8 @@ public class SolrRDD implements Serializable {
       if (fieldMeta.isStored) metadata.putBoolean("stored", fieldMeta.isStored);
       if (fieldMeta.fieldType != null) metadata.putString("type", fieldMeta.fieldType);
       if (fieldMeta.dynamicBase != null) metadata.putString("dynamicBase", fieldMeta.dynamicBase);
-      if (fieldMeta.fieldTypeClass != null) metadata.putString("class", fieldMeta.fieldTypeClass);      
-      listOfFields.add(DataTypes.createStructField(field.getKey(), dataType, !fieldMeta.isRequired, metadata.build()));
+      if (fieldMeta.fieldTypeClass != null) metadata.putString("class", fieldMeta.fieldTypeClass);
+      listOfFields.add(DataTypes.createStructField(fieldName.replaceAll("\\.","_"), dataType, !fieldMeta.isRequired, metadata.build()));
     }
 
     return DataTypes.createStructType(listOfFields);
@@ -740,7 +743,7 @@ public class SolrRDD implements Serializable {
           tvc.fieldTypeClass = SolrJsonSupport.asString("/fieldType/class", fieldTypeMeta);
 
       } catch (Exception exc) {
-          log.warn("Can't get field type for field " + fieldName+" due to: "+exc);
+          log.warn("Can't get field type for field " + fieldName + " due to: "+exc);
       }
       return tvc;
   }
