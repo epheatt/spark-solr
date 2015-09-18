@@ -512,6 +512,7 @@ public class SolrRDD implements Serializable {
       public Row call(SolrDocument doc) throws Exception {
         Object[] vals = new Object[queryFields.length];
         for (int f = 0; f < queryFields.length; f++) {
+          //StructType field = schema.getFieldIndex(queryFields[f]);
           Object fieldValue = doc.getFieldValue(queryFields[f]);
           if (fieldValue != null) {
             if (fieldValue instanceof Collection) {
@@ -529,41 +530,28 @@ public class SolrRDD implements Serializable {
 
   public StructType getQuerySchema(SolrQuery query) throws Exception {
     CloudSolrClient solrServer = getSolrClient(zkHost);
-    // Build up a schema based on the fields requested
-    String fieldList = query.getFields();
-    String[] fields = null;
-    if (fieldList != null) {
-      fields = query.getFields().split(",");
-    } else {
-      // just go out to Solr and get 10 docs and extract a field list from that
-      SolrQuery probeForFieldsQuery = query.getCopy();
-      probeForFieldsQuery.remove("distrib");
-      probeForFieldsQuery.set("collection", collection);
-      probeForFieldsQuery.set("fl", "*");
-      probeForFieldsQuery.setStart(0);
-      probeForFieldsQuery.setRows(10);
-      QueryResponse probeForFieldsResp = solrServer.query(probeForFieldsQuery);
-      SolrDocumentList hits = probeForFieldsResp.getResults();
-      Set<String> fieldSet = new TreeSet<String>();
-      for (SolrDocument hit : hits)
-        fieldSet.addAll(hit.getFieldNames());
-      fields = fieldSet.toArray(new String[0]);
-    }
-
-    if (fields == null || fields.length == 0)
-      throw new IllegalArgumentException("Query ("+query+") does not specify any fields needed to build a schema!");
-
     Set<String> liveNodes = solrServer.getZkStateReader().getClusterState().getLiveNodes();
     if (liveNodes.isEmpty())
       throw new RuntimeException("No live nodes found for cluster: "+zkHost);
     String solrBaseUrl = solrServer.getZkStateReader().getBaseUrlForNodeName(liveNodes.iterator().next());
     if (!solrBaseUrl.endsWith("?"))
       solrBaseUrl += "/";
+    // Build up a schema based on the fields requested
+    String fieldList = query.getFields();
+    Map<String,SolrFieldMeta> fieldTypeMap = null;
+    if (fieldList != null) {
+      String[] fields = query.getFields().split(",");
+      fieldTypeMap = getFieldTypes(fields, solrBaseUrl, collection);
+    } else {
+      fieldTypeMap = getSchemaFields(solrBaseUrl, collection);
+    }
 
-    Map<String,SolrFieldMeta> fieldTypeMap = getFieldTypes(fields, solrBaseUrl, collection);
+    if (fieldTypeMap == null || fieldTypeMap.isEmpty())
+      throw new IllegalArgumentException("Query ("+query+") does not specify any fields needed to build a schema!");
+
     List<StructField> listOfFields = new ArrayList<StructField>();
-    for (String field : fields) {
-      SolrFieldMeta fieldMeta = fieldTypeMap.get(field);
+    for (Map.Entry<String, SolrFieldMeta> field : fieldTypeMap.entrySet()) {
+      SolrFieldMeta fieldMeta = field.getValue();
       DataType dataType = (fieldMeta != null) ? solrDataTypes.get(fieldMeta.fieldTypeClass) : null;
       if (dataType == null) dataType = DataTypes.StringType;
 
@@ -571,9 +559,9 @@ public class SolrRDD implements Serializable {
         dataType = new ArrayType(dataType, true);
       }
 
-      boolean nullable = !"id".equals(field);
+      boolean nullable = !fieldMeta.isRequired;
 
-      listOfFields.add(DataTypes.createStructField(field, dataType, nullable));
+      listOfFields.add(DataTypes.createStructField(field.getKey(), dataType, nullable));
     }
 
     return DataTypes.createStructType(listOfFields);
@@ -581,76 +569,107 @@ public class SolrRDD implements Serializable {
 
   private static class SolrFieldMeta {
     String fieldType;
+    String dynamicBase;
+    boolean isRequired;
     boolean isMultiValued;
+    boolean isDocValues;
+    boolean isStored;
     String fieldTypeClass;
   }
 
-  private static Map<String,SolrFieldMeta> getFieldTypes(String[] fields, String solrBaseUrl, String collection) {
+  private static Map<String, SolrFieldMeta> getSchemaFields(String solrBaseUrl, String collection) {
+      String lukeUrl = solrBaseUrl+collection+"/admin/luke";
+      //collect mapping of Solr field to type
+      Map<String,SolrFieldMeta> schemaFieldMap = new HashMap<String,SolrFieldMeta>();
+      try {
+          try {
+              Map<String, Object> adminMeta = SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), lukeUrl, 2);
+              Map<String, Object> fields = SolrJsonSupport.asMap("/fields", adminMeta);
+              for (Map.Entry<String, Object> field : fields.entrySet()) {
+                  SolrFieldMeta tvc = new SolrFieldMeta();
+                  tvc.dynamicBase = SolrJsonSupport.asString("/fields/"+field.getKey()+"/dynamicBase", adminMeta);
+                  tvc = getFieldType(field.getKey(), tvc, solrBaseUrl, collection);
+                  if (tvc != null) {
+                      schemaFieldMap.put(field.getKey(), tvc);
+                  }
+              }
+          } catch (SolrException solrExc) {
+              log.warn("Can't get field type for field " + collection+" due to: "+solrExc);
+          }
+      } catch (Exception exc) {
+          log.warn("Can't get schema fields for " + collection + " due to: "+exc);
+      }
+      return schemaFieldMap;
+  }
+  
+  private static SolrFieldMeta getFieldType(String fieldName, SolrFieldMeta meta, String solrBaseUrl, String collection) {
+      // Hit Solr Schema API to get field type for field
+      String fieldUrl = solrBaseUrl+collection+"/schema/fields/"+fieldName;
+      SolrFieldMeta tvc = null;
+      try {
+          try {
+              Map<String, Object> fieldMeta = SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldUrl, 2);
+              tvc = new SolrFieldMeta();
+              tvc.fieldType = SolrJsonSupport.asString("/field/type", fieldMeta);
+              tvc.isRequired = SolrJsonSupport.asBool("/field/required", fieldMeta);
+              tvc.isMultiValued = SolrJsonSupport.asBool("/field/multiValued", fieldMeta);
+              tvc.isDocValues = SolrJsonSupport.asBool("/field/docValues", fieldMeta);
+              tvc.isStored = SolrJsonSupport.asBool("/field/stored", fieldMeta);
+          } catch (SolrException solrExc) {
+              int errCode = solrExc.code();
+              if (errCode == 404) {
+                  int lio = fieldName.lastIndexOf('_');
+                  if (lio != -1 || (meta != null && meta.dynamicBase != null)) {
+                      // see if the field is a dynamic field
+                      String dynField = (meta != null && meta.dynamicBase != null) ? meta.dynamicBase : "*"+fieldName.substring(lio);
+                      if (tvc == null) {
+                          String dynamicFieldsUrl = solrBaseUrl+collection+"/schema/dynamicfields/"+dynField;
+                          try {
+                              Map<String, Object> dynFieldMeta =
+                                      SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), dynamicFieldsUrl, 2);
+                              tvc = new SolrFieldMeta();
+                              tvc.fieldType = SolrJsonSupport.asString("/dynamicField/type", dynFieldMeta);
+                              tvc.dynamicBase = dynField;
+                              tvc.isRequired = SolrJsonSupport.asBool("/field/required", dynFieldMeta);
+                              tvc.isMultiValued = SolrJsonSupport.asBool("/dynamicField/multiValued", dynFieldMeta);
+                              tvc.isDocValues = SolrJsonSupport.asBool("/dynamicField/docValues", dynFieldMeta);
+                              tvc.isStored = SolrJsonSupport.asBool("/dynamicField/stored", dynFieldMeta);
+                          } catch (Exception exc) {
+                              // just ignore this and throw the outer exc
+                              log.error("Failed to get dynamic field information for "+dynField+" due to: "+exc);
+                              throw solrExc;
+                          }
+                      }
+                  }
+              }
+          }
 
+          if (tvc == null || tvc.fieldType == null) {
+              log.warn("Can't figure out field type for field: " + fieldName);
+              return null;
+          }
+
+          String fieldTypeUrl = solrBaseUrl+collection+"/schema/fieldtypes/"+tvc.fieldType;
+          Map<String, Object> fieldTypeMeta = SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldTypeUrl, 2);
+          tvc.fieldTypeClass = SolrJsonSupport.asString("/fieldType/class", fieldTypeMeta);
+
+      } catch (Exception exc) {
+          log.warn("Can't get field type for field " + fieldName+" due to: "+exc);
+      }
+      return tvc;
+  }
+  
+  private static Map<String,SolrFieldMeta> getFieldTypes(String[] fields, String solrBaseUrl, String collection) {
     // collect mapping of Solr field to type
     Map<String,SolrFieldMeta> fieldTypeMap = new HashMap<String,SolrFieldMeta>();
     for (String field : fields) {
-
       if (fieldTypeMap.containsKey(field))
         continue;
-
-      // Hit Solr Schema API to get field type for field
-      String fieldUrl = solrBaseUrl+collection+"/schema/fields/"+field;
-      try {
-        SolrFieldMeta tvc = null;
-        try {
-          Map<String, Object> fieldMeta =
-            SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldUrl, 2);
-          tvc = new SolrFieldMeta();
-          tvc.fieldType = SolrJsonSupport.asString("/field/type", fieldMeta);
-          tvc.isMultiValued = SolrJsonSupport.asBool("/field/multiValued", fieldMeta);
-        } catch (SolrException solrExc) {
-          int errCode = solrExc.code();
-          if (errCode == 404) {
-            int lio = field.lastIndexOf('_');
-            if (lio != -1) {
-              // see if the field is a dynamic field
-              String dynField = "*"+field.substring(lio);
-
-              tvc = fieldTypeMap.get(dynField);
-              if (tvc == null) {
-                String dynamicFieldsUrl = solrBaseUrl+collection+"/schema/dynamicfields/"+dynField;
-                try {
-                  Map<String, Object> dynFieldMeta =
-                    SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), dynamicFieldsUrl, 2);
-                  tvc = new SolrFieldMeta();
-                  tvc.fieldType = SolrJsonSupport.asString("/dynamicField/type", dynFieldMeta);
-                  tvc.isMultiValued = SolrJsonSupport.asBool("/dynamicField/multiValued", dynFieldMeta);
-
-                  fieldTypeMap.put(dynField, tvc);
-                } catch (Exception exc) {
-                  // just ignore this and throw the outer exc
-                  log.error("Failed to get dynamic field information for "+dynField+" due to: "+exc);
-                  throw solrExc;
-                }
-              }
-            }
-          }
-        }
-
-        if (tvc == null || tvc.fieldType == null) {
-          log.warn("Can't figure out field type for field: " + field);
-          continue;
-        }
-
-        String fieldTypeUrl = solrBaseUrl+collection+"/schema/fieldtypes/"+tvc.fieldType;
-        Map<String, Object> fieldTypeMeta =
-          SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldTypeUrl, 2);
-
-        tvc.fieldTypeClass = SolrJsonSupport.asString("/fieldType/class", fieldTypeMeta);
-
-        fieldTypeMap.put(field, tvc);
-
-      } catch (Exception exc) {
-        log.warn("Can't get field type for field " + field+" due to: "+exc);
+      SolrFieldMeta tvc = getFieldType(field, null, solrBaseUrl, collection);
+      if (tvc != null) {
+          fieldTypeMap.put(field, tvc);
       }
     }
-
     return fieldTypeMap;
   }
 
