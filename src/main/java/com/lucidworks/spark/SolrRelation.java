@@ -130,7 +130,7 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
         solrQuery.setFields(fieldList);
     } else {
         StructField[] schemaFields = schema.fields();
-        String[] fieldList = new String[schemaFields.length];
+        List<String> fieldList = new ArrayList<String>();
         for (int sf = 0; sf < schemaFields.length; sf++) {
             StructField schemaField = schemaFields[sf];
             Metadata meta = schemaField.metadata();
@@ -139,12 +139,14 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
             Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
             Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
             if (!isMultiValued && isDocValues && !isStored) {
-                fieldList[sf] = schemaField.name() + ":field("+fieldName+")";
+                fieldList.add((schemaField.name() + ":field("+fieldName+")");
             } else if (!isMultiValued) {
-                fieldList[sf] = schemaField.name() + ":" + fieldName;
+                fieldList.add(schemaField.name() + ":" + fieldName);
             }
         }
-        solrQuery.setFields(fieldList);
+        String[] fieldArr = new String[fieldList.size()];
+        fieldArr = fieldList.toArray(fieldArr);
+        solrQuery.setFields(fieldArr);
     }
     // clear all existing filters
     solrQuery.remove("fq");
