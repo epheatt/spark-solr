@@ -6,6 +6,7 @@ import java.net.ConnectException;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.Map.Entry;
 
 import com.lucidworks.spark.query.PagedResultsIterator;
 import com.lucidworks.spark.query.SolrTermVector;
@@ -15,6 +16,8 @@ import com.lucidworks.spark.util.SolrJsonSupport;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
+import org.apache.solr.client.solrj.io.*;
+import org.apache.solr.client.solrj.io.stream.CloudSolrStream;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -213,7 +216,49 @@ public class SolrRDD implements Serializable {
     List<SolrDocument> list = (doc != null) ? Arrays.asList(doc) : new ArrayList<SolrDocument>();
     return jsc.parallelize(list, 1);
   }
-
+  
+  /**
+   * Export a document by ID using real-time get
+   */
+  public JavaRDD<SolrDocument> export(JavaSparkContext jsc, final SolrQuery query) throws SolrServerException {
+    List<SolrDocument> results = new ArrayList<SolrDocument>();
+    Map<String, String> props = new HashMap<String, String>();
+    props.put("q", "*:*");
+    props.put("qt", "/export");
+    props.put("sort", uniqueKey+" asc");
+    props.put("fl", query.getFields());
+    try {
+        CloudSolrStream cstream = new CloudSolrStream(zkHost, collection, props);
+        try {
+          cstream.open();
+          while(true) {
+              Tuple tuple = cstream.read();
+              if(tuple.EOF) {
+                 break;
+              }
+              results.add(toSolrDocumentFromTuple(tuple));
+          }
+        } finally {
+           cstream.close();
+        }
+    } catch (IOException e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+    }
+    return jsc.parallelize(results, 1);
+  }
+  
+  private SolrDocument toSolrDocumentFromTuple(Tuple tuple) {
+      SolrDocument doc = new SolrDocument();
+      Map map = tuple.fields;
+      Iterator<Map.Entry<String, Object>> iterator = (Iterator<Entry<String, Object>>) map.entrySet();
+      while(iterator.hasNext()){
+          Map.Entry<String, Object> entry = iterator.next();
+          doc.addField(entry.getKey(), entry.getValue());
+      }      
+      return doc;
+  }
+  
   public JavaRDD<SolrDocument> query(JavaSparkContext jsc, final SolrQuery query, boolean useDeepPagingCursor) throws SolrServerException {
     if (useDeepPagingCursor)
       return queryDeep(jsc, query);
