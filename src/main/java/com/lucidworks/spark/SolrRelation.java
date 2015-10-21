@@ -106,48 +106,8 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
   }
 
   public synchronized RDD<Row> buildScan(String[] fields, Filter[] filters) {
-    java.util.Map<String,StructField> fieldMap = new HashMap<String,StructField>();
-    for (StructField f : schema.fields()) fieldMap.put(f.name(), f);  
-    if (fields != null && fields.length > 0) {
-        String[] fieldList = new String[fields.length];
-        for (int f = 0; f < fields.length; f++) {
-            StructField field = fieldMap.get(fields[f]);
-            if (field != null) {
-                Metadata meta = field.metadata();
-                String fieldName = meta.contains("name") ? meta.getString("name") : field.name();
-                Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
-                Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
-                Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
-                if (!isMultiValued && isDocValues && !isStored) {
-                    fieldList[f] = field.name() + ":field("+fieldName+")";
-                } else {
-                    fieldList[f] = field.name() + ":" + fieldName;
-                }
-            } else {
-                fieldList[f] = fields[f];
-            }
-        }
-        solrQuery.setFields(fieldList);
-    } else {
-        StructField[] schemaFields = schema.fields();
-        List<String> fieldList = new ArrayList<String>();
-        for (int sf = 0; sf < schemaFields.length; sf++) {
-            StructField schemaField = schemaFields[sf];
-            Metadata meta = schemaField.metadata();
-            String fieldName = meta.contains("name") ? meta.getString("name") : schemaField.name();
-            Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
-            Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
-            Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
-            if (!isMultiValued && isDocValues && !isStored) {
-                fieldList.add(schemaField.name() + ":field("+fieldName+")");
-            } else if (!isMultiValued) {
-                fieldList.add(schemaField.name() + ":" + fieldName);
-            }
-        }
-        String[] fieldArr = new String[fieldList.size()];
-        fieldArr = fieldList.toArray(fieldArr);
-        solrQuery.setFields(fieldArr);
-    }
+    solrQuery.remove("fl");
+    applyFieldList(fields);
     // clear all existing filters
     solrQuery.remove("fq");
     if (filters != null && filters.length > 0) {
@@ -178,6 +138,38 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
     return rows;
   }
 
+  protected void applyFieldList(String[] fields) {
+      java.util.Map<String,StructField> fieldMap = new HashMap<String,StructField>();
+      for (StructField f : schema.fields()) fieldMap.put(f.name(), f);
+      if (fields == null || (fields != null && fields.length == 0)) {
+          fields = new String[fieldMap.size()];
+          int i = 0;
+          for (StructField f : schema.fields()) {
+              fields[i] = f.name();
+              i++;
+          }
+      }
+      List<String> fieldList = new ArrayList<String>();
+      for (int f = 0; f < fields.length; f++) {
+          StructField field = fieldMap.get(fields[f]);
+          if (field != null) {
+              Metadata meta = field.metadata();
+              String fieldName = meta.contains("name") ? meta.getString("name") : field.name();
+              Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
+              Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
+              Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
+              if (!isMultiValued && isDocValues && !isStored) {
+                  fieldList.add(field.name() + ":field("+fieldName+")");
+              } else if (!isMultiValued) {
+                  fieldList.add(field.name() + ":" + fieldName);
+              }
+          } else {
+              fieldList.add(fields[f]);
+          }
+      }
+      solrQuery.setFields(fieldList.toArray(new String[fieldList.size()]));
+  }
+  
   // derive a schema for a specific query from the full collection schema
   protected StructType deriveQuerySchema(String[] fields) {
     java.util.Map<String,StructField> fieldMap = new HashMap<String,StructField>();
@@ -203,33 +195,59 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
     }
   }
 
+  protected String fieldToAttribute(String field) {
+      String attribute = field;
+      for (StructField f : schema.fields()) {
+          Metadata fieldMeta = f.metadata();
+          if (fieldMeta.contains("name") && fieldMeta.getString("name").equals(field)) {
+              attribute = f.name();
+              break;
+          } 
+      }
+      return attribute;
+  }
+  
+  protected String attributeToField(String attribute) {
+      String field = attribute;
+      for (StructField f : schema.fields()) {
+          if (f.name() != null && f.name().equals(attribute)) {
+              Metadata fieldMeta = f.metadata();
+              if (fieldMeta.contains("name")) {
+                  field = fieldMeta.getString("name");
+              }
+              break;
+          }
+      }
+      return field;
+  }
+  
   protected String fq(Filter f) {
     String negate = "";
     String crit = null;
     String attr = null;
     if (f instanceof EqualTo) {
       EqualTo eq = (EqualTo)f;
-      attr = eq.attribute();
+      attr = attributeToField(eq.attribute());
       crit = String.valueOf(eq.value());
     } else if (f instanceof GreaterThan) {
       GreaterThan gt = (GreaterThan)f;
-      attr = gt.attribute();
+      attr = attributeToField(gt.attribute());
       crit = "{"+gt.value()+" TO *]";
     } else if (f instanceof GreaterThanOrEqual) {
       GreaterThanOrEqual gte = (GreaterThanOrEqual)f;
-      attr = gte.attribute();
+      attr = attributeToField(gte.attribute());
       crit = "["+gte.value()+" TO *]";
     } else if (f instanceof LessThan) {
       LessThan lt = (LessThan)f;
-      attr = lt.attribute();
+      attr = attributeToField(lt.attribute());
       crit = "[* TO "+lt.value()+"}";
     } else if (f instanceof LessThanOrEqual) {
       LessThanOrEqual lte = (LessThanOrEqual)f;
-      attr = lte.attribute();
+      attr = attributeToField(lte.attribute());
       crit = "[* TO "+lte.value()+"]";
     } else if (f instanceof In) {
       In inf = (In)f;
-      attr = inf.attribute();
+      attr = attributeToField(inf.attribute());
       StringBuilder sb = new StringBuilder();
       sb.append("(");
       Object[] vals = inf.values();
@@ -241,29 +259,29 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
       crit = sb.toString();
     } else if (f instanceof IsNotNull) {
       IsNotNull inn = (IsNotNull)f;
-      attr = inn.attribute();
+      attr = attributeToField(inn.attribute());
       crit = "[* TO *]";
     } else if (f instanceof IsNull) {
       IsNull isn = (IsNull)f;
-      attr = isn.attribute();
+      attr = attributeToField(isn.attribute());
       crit = "[* TO *]";
       negate = "-";
     } else if (f instanceof StringContains) {
       StringContains sc = (StringContains)f;
-      attr = sc.attribute();
+      attr = attributeToField(sc.attribute());
       crit = "*"+sc.value()+"*";
     } else if (f instanceof StringEndsWith) {
       StringEndsWith sew = (StringEndsWith)f;
-      attr = sew.attribute();
+      attr = attributeToField(sew.attribute());
       crit = sew.value()+"*";
     } else if (f instanceof StringStartsWith) {
       StringStartsWith ssw = (StringStartsWith)f;
-      attr = ssw.attribute();
+      attr = attributeToField(ssw.attribute());
       crit = "*"+ssw.value();
     } else {
       throw new IllegalArgumentException("Filters of type '"+f+" ("+f.getClass().getName()+")' not supported!");
     }
-    return negate+attr+":"+crit;
+    return negate+attributeToField(attr)+":"+crit;
   }
 
   public void insert(final DataFrame df, boolean overwrite) {
