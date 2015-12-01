@@ -182,7 +182,7 @@ public class SolrRDD implements Serializable {
   }
 
   public SolrRDD(String zkHost, String collection) {
-      this(zkHost, collection, null);
+      this(zkHost, collection, new scala.collection.immutable.HashMap<String,String>());
   }
   
   public SolrRDD(String zkHost, String collection, scala.collection.immutable.Map<String,String> config) {
