@@ -166,7 +166,7 @@ public class SolrRDD implements Serializable {
   protected String collection;
   protected static scala.collection.immutable.Map<String,String> config;
   protected static Boolean escapeFields = false;
-  protected static StructType schema;
+  protected static StructType baseSchema;
   protected static String uniqueKey = "id";
   protected transient JavaSparkContext sc;
 
@@ -204,8 +204,7 @@ public class SolrRDD implements Serializable {
         log.warn("Can't get uniqueKey for " + collection+" due to: "+exc);
     }
     try {
-        log.error("SolrRDD.getQuerySchema for " + collection);
-        this.schema = getSolrSchema();
+        this.baseSchema = getBaseSchema();
     } catch (Exception exc) {
         log.warn("Can't get schema for " + collection+" due to: "+exc);
     }
@@ -223,28 +222,28 @@ public class SolrRDD implements Serializable {
       return val;
     }
   
-  private static String getSolrBaseUrl(String zkHost) throws Exception {
-      CloudSolrClient solrServer = getSolrClient(zkHost);
-      Set<String> liveNodes = solrServer.getZkStateReader().getClusterState().getLiveNodes();
-      if (liveNodes.isEmpty())
-        throw new RuntimeException("No live nodes found for cluster: "+zkHost);
-      String solrBaseUrl = solrServer.getZkStateReader().getBaseUrlForNodeName(liveNodes.iterator().next());
-      if (!solrBaseUrl.endsWith("?"))
-        solrBaseUrl += "/";
-      return solrBaseUrl;
-  }
+    private static String getSolrBaseUrl(String zkHost) throws Exception {
+        CloudSolrClient solrServer = getSolrClient(zkHost);
+        Set<String> liveNodes = solrServer.getZkStateReader().getClusterState().getLiveNodes();
+        if (liveNodes.isEmpty())
+            throw new RuntimeException("No live nodes found for cluster: " + zkHost);
+        String solrBaseUrl = solrServer.getZkStateReader().getBaseUrlForNodeName(liveNodes.iterator().next());
+        if (!solrBaseUrl.endsWith("?"))
+            solrBaseUrl += "/";
+        return solrBaseUrl;
+    }
 
-  public String getCollection() {
-    return collection;
-  }
+    public String getCollection() {
+        return collection;
+    }
 
     public scala.collection.immutable.Map<String, String> getConfig() {
         return config;
     }
 
     public StructType getSchema() {
-        return schema;
-      }
+        return baseSchema;
+    }
     
   /**
    * Get a document by ID using real-time get
@@ -621,7 +620,7 @@ public class SolrRDD implements Serializable {
 
   protected static void applyFields(String[] fields, SolrQuery solrQuery) {
       Map<String,StructField> fieldMap = new HashMap<String,StructField>();
-      if (schema != null) for (StructField f : schema.fields()) fieldMap.put(f.name(), f);
+      for (StructField f : baseSchema.fields()) fieldMap.put(f.name(), f);
       String[] fieldList = new String[fields.length];
       for (int f = 0; f < fields.length; f++) {
           StructField field = fieldMap.get(fields[f].replaceAll("`",""));
@@ -669,7 +668,7 @@ public class SolrRDD implements Serializable {
     return rows;
   }
 
-  private StructType getSolrSchema() throws Exception {
+  private StructType getBaseSchema() throws Exception {
       String solrBaseUrl = getSolrBaseUrl(zkHost);
       Map<String,SolrFieldMeta> fieldTypeMap = getSchemaFields(solrBaseUrl, collection);
       
@@ -701,22 +700,23 @@ public class SolrRDD implements Serializable {
       return DataTypes.createStructType(listOfFields);
   }
   
- //derive a schema for a specific query from the full collection schema
- public StructType deriveQuerySchema(String[] fields) {
-   Map<String,StructField> fieldMap = new HashMap<String,StructField>();
-   for (StructField f : schema.fields()) fieldMap.put(f.name(), f);
-   List<StructField> listOfFields = new ArrayList<StructField>();
-   for (String field : fields) listOfFields.add(fieldMap.get(field));
-   return DataTypes.createStructType(listOfFields);
- }
-  
-  public StructType getQuerySchema(SolrQuery query) throws Exception {
-    String fieldList = query.getFields();
-    if (fieldList != null) {
-        return deriveQuerySchema(fieldList.split(","));
+    // derive a schema for a specific query from the full collection schema
+    public StructType deriveQuerySchema(String[] fields) {
+        Map<String, StructField> fieldMap = new HashMap<String, StructField>();
+        for (StructField f : baseSchema.fields()) fieldMap.put(f.name(), f);
+        List<StructField> listOfFields = new ArrayList<StructField>();
+        for (String field : fields) listOfFields.add(fieldMap.get(field));
+        return DataTypes.createStructType(listOfFields);
     }
-    return schema;
-  }
+
+    public StructType getQuerySchema(SolrQuery query) throws Exception {
+        String fieldList = query.getFields();
+        if (fieldList != null) {
+            return deriveQuerySchema(fieldList.split(","));
+        }
+        return baseSchema;
+    }
+  
 
   private static class SolrFieldMeta {
     String fieldType;
