@@ -50,8 +50,6 @@ public class StreamingResultsIterator extends StreamingResponseCallback implemen
     this.usingCursors = (cursorMark != null);
     this.nextCursorMark = cursorMark;
     this.cursorMarkOfCurrentPage = cursorMark;
-    if (solrQuery != null)
-        log.error("StreamingResultsIterator query: " + solrQuery.toString());
     if (solrQuery.getRows() == null)
       solrQuery.setRows(PagedResultsIterator.DEFAULT_PAGE_SIZE); // default page size
   }

@@ -325,12 +325,10 @@ public class SolrRDD implements Serializable {
     if (fields != null) {
         applyFields(fields.split(","), query);
     }
-    log.error("SchemaPreservingSolrRDD.getQuerySchema SolrRDD.queryShards query: " + query.toString());
     // parallelize the requests to the shards
     JavaRDD<SolrDocument> docs = jsc.parallelize(shards, shards.size()).flatMap(
       new FlatMapFunction<String, SolrDocument>() {
         public Iterable<SolrDocument> call(String shardUrl) throws Exception {
-          log.error("SchemaPreservingSolrRDD.getQuerySchema SolrRDD.queryShards shardUrl: " + shardUrl);
           return new StreamingResultsIterator(SolrSupport.getHttpSolrClient(shardUrl), query, "*");
         }
       }
