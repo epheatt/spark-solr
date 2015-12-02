@@ -268,6 +268,8 @@ public class SolrRelationTest extends RDDProcessorTestBase {
   }
 
   public void createMLModelLRParquet() throws Exception {
+    File lRModel = new File("LRParquet").getAbsoluteFile();
+    FileUtils.forceDelete(lRModel);  
     List<LabeledPoint> list = new ArrayList<LabeledPoint>();
     LabeledPoint zero = new LabeledPoint(0.0, Vectors.dense(1.0, 0.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0));
     LabeledPoint one = new LabeledPoint(1.0, Vectors.dense(8.0,7.0,6.0,4.0,5.0,6.0,1.0,2.0,3.0));
@@ -281,6 +283,8 @@ public class SolrRelationTest extends RDDProcessorTestBase {
   }
 
   public void createMLModelNBParquet() throws Exception {
+    File nBModel = new File("NBParquet").getAbsoluteFile();
+    FileUtils.forceDelete(nBModel);
     List<LabeledPoint> list = new ArrayList<LabeledPoint>();
     LabeledPoint zero = new LabeledPoint(0.0, Vectors.dense(1.0, 0.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0));
     LabeledPoint one = new LabeledPoint(1.0, Vectors.dense(8.0,7.0,6.0,4.0,5.0,6.0,1.0,2.0,3.0));
