@@ -1,6 +1,8 @@
 package com.lucidworks.spark.query;
 
 import com.lucidworks.spark.SolrRDD;
+
+import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
@@ -19,7 +21,9 @@ import java.util.concurrent.TimeUnit;
  * An iterator over a stream of query results from Solr.
  */
 public class StreamingResultsIterator extends StreamingResponseCallback implements Iterator<SolrDocument>, Iterable<SolrDocument> {
-
+  
+  public static Logger log = Logger.getLogger(StreamingResultsIterator.class);
+    
   protected SolrClient solrServer;
   protected SolrQuery solrQuery;
   protected int currentPageSize = 0;
@@ -46,6 +50,8 @@ public class StreamingResultsIterator extends StreamingResponseCallback implemen
     this.usingCursors = (cursorMark != null);
     this.nextCursorMark = cursorMark;
     this.cursorMarkOfCurrentPage = cursorMark;
+    if (solrQuery != null)
+        log.error("StreamingResultsIterator query: " + solrQuery.toString());
     if (solrQuery.getRows() == null)
       solrQuery.setRows(PagedResultsIterator.DEFAULT_PAGE_SIZE); // default page size
   }

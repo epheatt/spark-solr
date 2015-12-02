@@ -33,16 +33,17 @@ public class SchemaPreservingSolrRDD extends SolrRDD {
   }
 
   public SchemaPreservingSolrRDD(String zkHost, String collection) {
-    super(zkHost, collection, null);
+    super(zkHost, collection, new scala.collection.immutable.HashMap<String,String>());
   }
 
   public SchemaPreservingSolrRDD(String zkHost, String collection, scala.collection.immutable.Map<String,String> config) {
-      super(zkHost, collection, config);
+    super(zkHost, collection, config);
   }
   
   @Override
   public StructType getQuerySchema(SolrQuery query) throws Exception {
     query.addFilterQuery("__lwcategory_s:schema AND __lwroot_s:root");
+    log.error("getQuerySchema for " + query.toString());
     JavaRDD<SolrDocument> rdd1 = queryShards(sc, query);
     return readSchema(rdd1.collect().get(0), getSolrClient(zkHost) , collection);
   }

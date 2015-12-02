@@ -116,7 +116,7 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
     if (dataFrame != null) {
       schema = dataFrame.schema();
     } else if (fieldList != null) {
-      schema = deriveQuerySchema(fieldList);
+      schema = solrRDD.deriveQuerySchema(fieldList);
     } else {
       schema = solrRDD.getSchema();
     }
@@ -175,7 +175,7 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
     try {
 
       // build the schema based on the desired fields - applicable only for non-schemapreserving dataframes in solr
-      StructType querySchema = (fields != null && fields.length > 0 && !preserveSchema) ? deriveQuerySchema(fields) : schema;
+      StructType querySchema = (fields != null && fields.length > 0 && !preserveSchema) ? solrRDD.deriveQuerySchema(fields) : schema;
       JavaRDD<SolrDocument> docs = solrRDD.query(jsc, solrQuery);
       rows = solrRDD.toRows(querySchema, docs).rdd();
     } catch (Exception e) {
@@ -187,15 +187,6 @@ public class SolrRelation extends BaseRelation implements Serializable, TableSca
       }
     }
     return rows;
-  }
-
-  // derive a schema for a specific query from the full collection schema
-  protected StructType deriveQuerySchema(String[] fields) {
-    Map<String,StructField> fieldMap = new HashMap<String,StructField>();
-    for (StructField f : solrRDD.getSchema().fields()) fieldMap.put(f.name(), f);
-    List<StructField> listOfFields = new ArrayList<StructField>();
-    for (String field : fields) listOfFields.add(fieldMap.get(field));
-    return DataTypes.createStructType(listOfFields);
   }
 
   protected void applyDefaultFields() {
