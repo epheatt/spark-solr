@@ -321,6 +321,7 @@ public class SolrRDD implements Serializable {
         query.addSort(SolrQuery.SortClause.asc(uniqueKey));
 
     String fields = query.getFields();
+    log.error("queryShards fields: "+fields);
     if (fields != null) {
         applyFields(fields.split(","), query);
     }

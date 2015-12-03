@@ -97,8 +97,46 @@ public class SchemaPreservingSolrRDD extends SolrRDD {
   }
 
   @Override
+  public JavaRDD<SolrDocument> queryShards(JavaSparkContext jsc, final SolrQuery origQuery) throws SolrServerException {
+    origQuery.addFilterQuery("__lwcategory_s:data");
+    StructField[] schemaFields = super.getSchema().fields();
+    List<String> fieldList = new ArrayList<String>();
+    for (int sf = 0; sf < schemaFields.length; sf++) {
+        StructField schemaField = schemaFields[sf];
+        Metadata meta = schemaField.metadata();
+        Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
+        Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
+        Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
+        if (isStored || (isDocValues && !isMultiValued)) {
+            fieldList.add(schemaField.name());
+        }
+        if (isStored || (isDocValues && !isMultiValued)) {
+            fieldList.add(schemaField.name());
+        }
+    }
+    origQuery.setFields(fieldList.toArray(new String[fieldList.size()]));
+    return super.queryShards(jsc, origQuery);
+  }
+  
+  @Override
   public JavaRDD<SolrDocument> queryShards(JavaSparkContext jsc, final SolrQuery origQuery, final String splitFieldName, final int splitsPerShard) throws SolrServerException {
     origQuery.addFilterQuery("__lwcategory_s:data");
+    StructField[] schemaFields = super.getSchema().fields();
+    List<String> fieldList = new ArrayList<String>();
+    for (int sf = 0; sf < schemaFields.length; sf++) {
+        StructField schemaField = schemaFields[sf];
+        Metadata meta = schemaField.metadata();
+        Boolean isMultiValued = meta.contains("multiValued") ? meta.getBoolean("multiValued") : false;
+        Boolean isDocValues = meta.contains("docValues") ? meta.getBoolean("docValues") : false;
+        Boolean isStored = meta.contains("stored") ? meta.getBoolean("stored") : false;
+        if (isStored || (isDocValues && !isMultiValued)) {
+            fieldList.add(schemaField.name());
+        }
+        if (isStored || (isDocValues && !isMultiValued)) {
+            fieldList.add(schemaField.name());
+        }
+    }
+    origQuery.setFields(fieldList.toArray(new String[fieldList.size()]));
     return super.queryShards(jsc, origQuery, splitFieldName, splitsPerShard);
   }
 
@@ -157,17 +195,13 @@ public class SchemaPreservingSolrRDD extends SolrRDD {
           if (childDoc == null){
             recurse = false;
           }
-          StructField field = (st.fields().length > 0 && st.fields()[x.size()] != null) ? st.fields()[x.size()] : null;
-          log.error("st.fields.length: " + st.fields().length + "x.size: " + x.size() + " name: " + (field != null ? field.name() : "") + " dataType.typeName: " + (field != null ? field.dataType().typeName() : "") + " doc:" + doc.toString() + " childDoc:" + childDoc.toString());
+          //StructField field = (st.fields().length > 0 && st.fields()[x.size()] != null) ? st.fields()[x.size()] : null;
+          //log.error("st.fields.length: " + st.fields().length + "x.size: " + x.size() + " name: " + (field != null ? field.name() : "") + " dataType.typeName: " + (field != null ? field.dataType().typeName() : "") + " doc:" + doc.toString() + " childDoc:" + childDoc.toString());
           if (recurse && st.fields().length > 0 && st.fields()[x.size()] != null && st.fields()[x.size()].dataType().typeName().equals("struct")) {
             //l = l + 1;
             ArrayList<Object> str1 = new ArrayList<Object>();
             x.add(recurseDataRead(childDoc, str1, (StructType) st.fields()[x.size()].dataType(), collection, childMap));
-          } else {
-            x.add(null);
           }
-        } else {
-          x.add(null);
         }
       }
       if (x3.length > x.size() && x1.get(x3[x.size()]+"_s") == null && !st.fields()[x.size()].dataType().typeName().equals("struct")){

@@ -261,7 +261,9 @@ public class SolrRelationTest extends RDDProcessorTestBase {
     DataFrame df2 = sqlContext.read().format("solr").options(options).load();
     df2 = sqlContext.createDataFrame(df2.javaRDD(),df2.schema());
     df.show();
+    df.printSchema();
     df2.show();
+    df2.printSchema();
     df2.registerTempTable("DFTEST");
     sqlContext.sql("SELECT test_s.testtype_s FROM DFTEST").show();
     deleteCollection("testNested");
