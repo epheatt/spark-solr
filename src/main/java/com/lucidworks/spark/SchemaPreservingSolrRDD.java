@@ -157,7 +157,9 @@ public class SchemaPreservingSolrRDD extends SolrRDD {
           if (childDoc == null){
             recurse = false;
           }
-          if (recurse && st.fields()[x.size()].dataType().typeName().equals("struct")) {
+          StructField field = (st.fields().length > 0 && st.fields()[x.size()] != null) ? st.fields()[x.size()] : null;
+          log.error("st.fields.length: " + st.fields().length + "x.size: " + x.size() + " name: " + (field != null ? field.name() : "") + " dataType.typeName: " + (field != null ? field.dataType().typeName() : "") + " doc:" + doc.toString() + " childDoc:" + childDoc.toString());
+          if (recurse && st.fields().length > 0 && st.fields()[x.size()] != null && st.fields()[x.size()].dataType().typeName().equals("struct")) {
             //l = l + 1;
             ArrayList<Object> str1 = new ArrayList<Object>();
             x.add(recurseDataRead(childDoc, str1, (StructType) st.fields()[x.size()].dataType(), collection, childMap));
