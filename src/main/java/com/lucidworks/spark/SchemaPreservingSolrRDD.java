@@ -26,7 +26,8 @@ import org.apache.spark.sql.types.*;
 import org.apache.spark.sql.Row;
 
 public class SchemaPreservingSolrRDD extends SolrRDD {
-  public static Logger log = Logger.getLogger(SolrRDD.class);
+
+  public static Logger log = Logger.getLogger(SchemaPreservingSolrRDD.class);
 
   public SchemaPreservingSolrRDD(String collection) {
     super("localhost:9983", collection); // assume local embedded ZK if not supplied
@@ -156,11 +157,15 @@ public class SchemaPreservingSolrRDD extends SolrRDD {
           if (childDoc == null){
             recurse = false;
           }
-          if (recurse) {
+          if (recurse && st.fields()[x.size()].dataType().typeName().equals("struct")) {
             //l = l + 1;
             ArrayList<Object> str1 = new ArrayList<Object>();
             x.add(recurseDataRead(childDoc, str1, (StructType) st.fields()[x.size()].dataType(), collection, childMap));
+          } else {
+            x.add(null);
           }
+        } else {
+          x.add(null);
         }
       }
       if (x3.length > x.size() && x1.get(x3[x.size()]+"_s") == null && !st.fields()[x.size()].dataType().typeName().equals("struct")){
