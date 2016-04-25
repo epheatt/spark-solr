@@ -255,7 +255,11 @@ public class SolrQuerySupport implements Serializable {
 
     // In case of empty, just return all fields with their respective types
     if (fields.length == 0) {
-      List<String> fieldNames = fieldInfoFromSolr.stream().map(s -> s.get("name").toString()).collect(Collectors.toList());
+      List<String> fieldNames = new ArrayList<String>();
+      for (Map<String,Object> map : fieldInfoFromSolr) {
+         String fieldName = (String)map.get("name");
+         fieldNames.add(fieldName);
+      }
       fields = fieldNames.toArray(new String[fieldNames.size()]);
     }
 

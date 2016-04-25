@@ -82,9 +82,10 @@ public class EventsimUtil {
       throw new FileNotFoundException("File not found at path '" + datasetPath + "'");
 
     // Convert the eventsim data to valid SolrDocument
-    List<SolrInputDocument> docs = Files.lines(eventsimFile.toPath())
-                                    .map(EventsimUtil::convertToSolrDocument)
-                                    .collect(Collectors.toList());
+    List<SolrInputDocument> docs = new ArrayList<SolrInputDocument>();
+    for (String line : Files.readAllLines(eventsimFile.toPath())) {
+      docs.add(convertToSolrDocument(line));
+    }
 
     CloudSolrClient solrClient = SolrSupport.getSolrClient(zkHost);
     solrClient.setDefaultCollection(collectionName);

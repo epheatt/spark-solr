@@ -21,6 +21,7 @@ import org.apache.spark.mllib.linalg.Vector;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
 
 public class SolrRDD implements Serializable{
 
@@ -57,7 +58,10 @@ public class SolrRDD implements Serializable{
       throw new SparkException("Exception while querying Solr", exc);
     }
     SolrDocument doc = (SolrDocument) resp.getResponse().get("doc");
-    List<SolrDocument> list = (doc != null) ? Collections.singletonList(doc): Collections.emptyList();
+    List<SolrDocument> list = new ArrayList<SolrDocument>();
+    if (doc != null) {
+      list.add((SolrDocument)doc);
+    }
     return jsc.parallelize(list, 1);
   }
 
